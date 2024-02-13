@@ -21,6 +21,9 @@ venv/
 *.h5
 *.bak
 *.tmp
+*.arrow
+*dataset_info.json
+*state.json
 
 # OS files
 Thumbs.db
