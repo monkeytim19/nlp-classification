@@ -7,6 +7,9 @@
 *.pkl
 *.joblib
 *.model
+results/checkpoint*
+runs/
+wandb/
 
 # Environment and Config
 venv/

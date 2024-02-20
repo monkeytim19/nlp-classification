@@ -13,10 +13,11 @@ def load_tsv():
         "keyword",
         "country_code",
         "text",
-        "label_score",
+        "labels",
     ]
     PCL_threshold = 2
-    paragraphs["label"] = (paragraphs["label_score"] >= PCL_threshold).astype(int)
+    paragraphs["pcl"] = (paragraphs["labels"] >= PCL_threshold).astype(int)
+    paragraphs["labels"] = paragraphs["labels"].astype(float)
     paragraphs = paragraphs.dropna()  # paragraph 8640 has None text
 
     # Split into train+val and dev
@@ -30,7 +31,7 @@ def load_tsv():
     dev = paragraphs.merge(dev_ids, on="par_id", how="inner")
 
     # Note at this point we have 3 label columns - need to be careful about which ones get into training
-    # label, label_score, label_category_vector
+    # labels (the score), label_category_vector, pcl (the true classification label)
     return train_val, dev
 
 
