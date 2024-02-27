@@ -1,3 +1,6 @@
+import os
+import shutil
+
 import nlpaug.augmenter.word as naw
 import numpy as np
 import pandas as pd
@@ -89,7 +92,10 @@ def preprocess(aug_p=0.0):
     val = tokenise_df(val_df)
     dev = tokenise_df(dev_df)
 
-    # to avoid tokenising every time, save down the datasets
+    # to avoid tokenising every time, save down the datasets. delete the old datasets first.
+    for path in ["data/train", "data/val", "data/dev"]:
+        if os.path.exists(path):
+            shutil.rmtree(path)
     train.save_to_disk("data/train")
     val.save_to_disk("data/val")
     dev.save_to_disk("data/dev")
