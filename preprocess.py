@@ -1,5 +1,8 @@
+import nlpaug.augmenter.word as naw
+import numpy as np
 import pandas as pd
 from datasets import Dataset
+from sklearn.model_selection import train_test_split
 from transformers import DistilBertTokenizer
 
 
@@ -53,17 +56,47 @@ def tokenise_df(df):
     return encoded
 
 
-if __name__ == "__main__":
-    train_val_df, dev_df = load_tsv()
-    train_val = tokenise_df(train_val_df)
-    dev = tokenise_df(dev_df)
+def augment_text(df, aug, upsample=1.0):
+    pcl_df = df[df["pcl"] == 1].copy()
+    pcl_df = pcl_df.sample(frac=upsample, random_state=861)
+    orig_text = list(pcl_df["text"])
+    aug_text = aug.augment(orig_text)
+    pcl_df["text"] = aug_text
 
-    train, val = train_val.train_test_split(test_size=0.2, seed=861).values()
+    sample_text = df["text"].iloc[0]
+    print(f"Original: {sample_text}")
+    print(f"Type of sample text: {type(sample_text)}")
+    augmented_text = aug.augment(sample_text)
+    print(f"Augmented: {augmented_text}")
+    print(f"Type of augmented text: {type(augmented_text)}")
+
+    return pd.concat([df, pcl_df])
+
+
+def preprocess(aug_p=0.0):
+    train_val_df, dev_df = load_tsv()
+    train_df, val_df = train_test_split(
+        train_val_df, test_size=0.2, random_state=861, stratify=train_val_df["labels"]
+    )
+
+    np.random.seed(861)
+    aug = naw.ContextualWordEmbsAug(
+        model_path="distilbert-base-uncased", action="substitute", aug_p=0.1
+    )
+    aug_train_df = augment_text(train_df, aug, upsample=1)
+
+    train = tokenise_df(aug_train_df)
+    val = tokenise_df(val_df)
+    dev = tokenise_df(dev_df)
 
     # to avoid tokenising every time, save down the datasets
     train.save_to_disk("data/train")
     val.save_to_disk("data/val")
     dev.save_to_disk("data/dev")
+
+
+if __name__ == "__main__":
+    preprocess(0.0)
 
     # --------------------------------------------
     # For loading into the main file
