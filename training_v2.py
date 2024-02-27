@@ -14,6 +14,8 @@ from transformers import (
     TrainingArguments,
 )
 
+import wandb
+
 
 class CustomBert(nn.Module):
     def __init__(self, transformer_out=6, dropout=0.1, class_weights=None):
@@ -115,7 +117,10 @@ def compute_metrics(pred, class_weights=None):
     return results
 
 
-def main(dropout=0.1, transformer_out=6, binary_flag=False):
+def main(label="", dropout=0.1, transformer_out=6, binary_flag=False):
+
+    wandb.init(project="distilbert", name=f"{label}_d_{dropout}_lossweights_T")
+
     torch.manual_seed(892)
     np.random.seed(892)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -139,11 +144,12 @@ def main(dropout=0.1, transformer_out=6, binary_flag=False):
     class_weights = torch.tensor(class_weights)
     compute_metrics_weighted = partial(compute_metrics, class_weights=class_weights)
 
-    model = CustomBert(class_weights=class_weights.to(device)).to(device)
+    model = CustomBert(dropout=dropout, class_weights=class_weights.to(device))
+    model.to(device)
 
     training_args = TrainingArguments(
         output_dir="./results",
-        num_train_epochs=20,
+        num_train_epochs=10,
         per_device_train_batch_size=16,
         per_device_eval_batch_size=16,
         warmup_steps=500,
@@ -151,6 +157,7 @@ def main(dropout=0.1, transformer_out=6, binary_flag=False):
         evaluation_strategy="epoch",
         save_strategy="epoch",
         save_total_limit=2,
+        report_to="wandb",
     )
 
     trainer = Trainer(
@@ -166,12 +173,18 @@ def main(dropout=0.1, transformer_out=6, binary_flag=False):
     print(eval_result)
 
     torch.save(model.state_dict(), "results/model.pth")
+    wandb.finish()
 
 
 if __name__ == "__main__":
-    # for dropout in [0, 0.2, 0.3, 0.4, 0.5, 0.6]:
-    #     main(dropout)
     main()
+
+    # from preprocess import preprocess
+
+    # for aug_p in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]:
+    # for aug_p in [0.4]:
+    #     preprocess(aug_p)
+    #     main(label=f"aug_{aug_p}", dropout=0.3)
 
     # Copy this for testing model
     # example = next(iter(train))
