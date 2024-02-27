@@ -81,7 +81,7 @@ def preprocess(aug_p=0.0):
 
     np.random.seed(861)
     aug = naw.ContextualWordEmbsAug(
-        model_path="distilbert-base-uncased", action="substitute", aug_p=0.1
+        model_path="distilbert-base-uncased", action="substitute", aug_p=aug_p
     )
     aug_train_df = augment_text(train_df, aug, upsample=1)
 
