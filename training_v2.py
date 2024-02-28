@@ -1,3 +1,4 @@
+import random
 from functools import partial
 
 import numpy as np
@@ -117,13 +118,16 @@ def compute_metrics(pred, class_weights=None):
     return results
 
 
-def main(label="", dropout=0.1, transformer_out=6, binary_flag=False):
+def main(label="", dropout=0.1, transformer_out=6, binary_flag=False, **kwargs):
 
     wandb.init(project="distilbert", name=f"{label}_d_{dropout}_lossweights_T")
 
     torch.manual_seed(892)
     np.random.seed(892)
+    random.seed(892)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(892)
 
     train = Dataset.load_from_disk("data/train")
     val = Dataset.load_from_disk("data/val")
@@ -155,8 +159,8 @@ def main(label="", dropout=0.1, transformer_out=6, binary_flag=False):
         warmup_steps=500,
         weight_decay=0.01,
         evaluation_strategy="epoch",
-        save_strategy="epoch",
-        save_total_limit=2,
+        # save_strategy="epoch",
+        # save_total_limit=2,
         report_to="wandb",
     )
 
@@ -172,19 +176,42 @@ def main(label="", dropout=0.1, transformer_out=6, binary_flag=False):
     eval_result = trainer.evaluate()
     print(eval_result)
 
-    torch.save(model.state_dict(), "results/model.pth")
+    config = wandb.config
+    config.dropout = dropout
+    config.transformer_out = transformer_out
+    config.binary_flag = binary_flag
+    for k, v in kwargs.items():
+        setattr(config, k, v)
+    for k, v in eval_result.items():
+        setattr(config, k, v)
+
+    # torch.save(model.state_dict(), "results/model.pth")
     wandb.finish()
 
 
 if __name__ == "__main__":
-    main()
+    from preprocess import preprocess
 
-    # from preprocess import preprocess
+    preprocess(upsample=0.0, back_translate=False)
+    main(label="no_aug_no_pre")
 
-    # for aug_p in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]:
+    # for back_translate in [False, True]:
+    #     for sub_p in [0.0, 0.2]:
+    #         for ins_p in [0.0, 0.05]:
+    #             try:
+    #                 preprocess(sub_p=sub_p, ins_p=ins_p, back_translate=back_translate)
+    #                 kwargs = {
+    #                     "sub_p": sub_p,
+    #                     "ins_p": ins_p,
+    #                     "back_translate": back_translate,
+    #                 }
+    #                 main(label=f"sub_{sub_p}_ins_{ins_p}_bt_{back_translate}", **kwargs)
+    #             except Exception as e:
+    #                 print(e)
+
     # for aug_p in [0.4]:
     #     preprocess(aug_p)
-    #     main(label=f"aug_{aug_p}", dropout=0.3)
+    #     main(label=f"aug_{aug_p}", dropout=0.1)
 
     # Copy this for testing model
     # example = next(iter(train))

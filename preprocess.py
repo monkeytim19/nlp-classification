@@ -1,10 +1,14 @@
 import os
+import random
 import shutil
 
+import inflect
 import nlpaug.augmenter.word as naw
 import numpy as np
 import pandas as pd
+import torch
 from datasets import Dataset
+from nlpaug.flow import Sequential, Sometimes
 from sklearn.model_selection import train_test_split
 from transformers import DistilBertTokenizer
 
@@ -59,34 +63,110 @@ def tokenise_df(df):
     return encoded
 
 
-def augment_text(df, aug, upsample=1.0):
-    pcl_df = df[df["pcl"] == 1].copy()
-    pcl_df = pcl_df.sample(frac=upsample, random_state=861)
-    orig_text = list(pcl_df["text"])
-    aug_text = aug.augment(orig_text)
-    pcl_df["text"] = aug_text
+def augment_text(df, augs, upsample, back_translate=True):
+    if upsample > 0:
+        pcl_df = df[df["pcl"] == 1].copy()
+        with_replacement = True if upsample > 1 else False
+        pcl_df = pcl_df.sample(
+            frac=upsample, random_state=861, replace=with_replacement
+        )
+        sample_text = pcl_df["text"].iloc[0]
+        print(f"Original: {sample_text}")
 
-    sample_text = df["text"].iloc[0]
-    print(f"Original: {sample_text}")
-    print(f"Type of sample text: {type(sample_text)}")
-    augmented_text = aug.augment(sample_text)
-    print(f"Augmented: {augmented_text}")
-    print(f"Type of augmented text: {type(augmented_text)}")
+        aug_text = list(pcl_df["text"])
+        for aug in augs:
+            aug_text = aug.augment(aug_text)
+        pcl_df["text"] = aug_text
+        augmented_text = pcl_df["text"].iloc[0]
+        print(f"Augmented: {augmented_text}")
+    else:
+        pcl_df = pd.DataFrame(columns=df.columns)
 
-    return pd.concat([df, pcl_df])
+    if back_translate:
+        back_translate_aug = naw.BackTranslationAug(
+            from_model_name="Helsinki-NLP/opus-mt-en-zh",
+            to_model_name="Helsinki-NLP/opus-mt-zh-en",
+            max_length=1000,
+            device="cuda" if torch.cuda.is_available() else "cpu",
+        )
+        for_translation = df[df["pcl"] == 1].copy()
+        print(f"Original: {for_translation.text.iloc[0]}")
+
+        for_translation_text = list(for_translation["text"])
+        translated_text = back_translate_aug.augment(for_translation_text)
+        for_translation["text"] = translated_text
+        print(f"Translated: {for_translation.text.iloc[0]}")
+    else:
+        for_translation = pd.DataFrame(columns=df.columns)
+
+    return pd.concat([df, pcl_df, for_translation])
 
 
-def preprocess(aug_p=0.0):
+def keywords_to_stopwords(df):
+    keywords = list(df.keyword.unique())
+
+    # common issue is that the keyword is singular but the word in the text is plural or vice-versa
+    # so add the singular and plural forms of the keyword to the stopwords
+    p = inflect.engine()
+    stopwords = set()
+    for word in keywords:
+        stopwords.add(word)
+        stopwords.add(p.plural(word))
+        singular = p.singular_noun(word)
+        if singular:  # This is False when word is already singular
+            stopwords.add(singular)
+
+    return list(stopwords)
+
+
+def preprocess(
+    sub_p=0.2,
+    ins_p=0.05,
+    upsample=2.0,
+    use_stopwords=True,
+    back_translate=True,
+    preprompt="patronizing: ",
+    postprompt="",
+):
     train_val_df, dev_df = load_tsv()
     train_df, val_df = train_test_split(
         train_val_df, test_size=0.2, random_state=861, stratify=train_val_df["labels"]
     )
 
     np.random.seed(861)
-    aug = naw.ContextualWordEmbsAug(
-        model_path="distilbert-base-uncased", action="substitute", aug_p=aug_p
+    random.seed(861)
+
+    if use_stopwords:
+        stopwords = keywords_to_stopwords(train_val_df)
+    else:
+        stopwords = None
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    substitute_aug = naw.ContextualWordEmbsAug(
+        model_path="distilbert-base-uncased",
+        action="substitute",
+        aug_p=sub_p,
+        aug_min=0,
+        aug_max=1000,
+        stopwords=stopwords,
+        device=device,
     )
-    aug_train_df = augment_text(train_df, aug, upsample=1)
+    insert_aug = naw.ContextualWordEmbsAug(
+        model_path="distilbert-base-uncased",
+        action="insert",
+        aug_p=ins_p,
+        aug_min=0,
+        aug_max=1000,
+        stopwords=stopwords,
+        device=device,
+    )
+
+    augs = Sequential([substitute_aug, insert_aug])
+    aug_train_df = augment_text(train_df, augs, upsample, back_translate)
+
+    for df in [train_df, val_df, dev_df, aug_train_df]:
+        df["text"] = preprompt + df["text"] + postprompt
 
     train = tokenise_df(aug_train_df)
     val = tokenise_df(val_df)
@@ -102,7 +182,7 @@ def preprocess(aug_p=0.0):
 
 
 if __name__ == "__main__":
-    preprocess(0.0)
+    preprocess()
 
     # --------------------------------------------
     # For loading into the main file
