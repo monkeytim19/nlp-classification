@@ -73,7 +73,7 @@ def augment_text(df, aug, upsample=1.0):
     return pd.concat([df, pcl_df])
 
 
-def preprocess(aug_p=0.0):
+def preprocess(dir_path, aug_p=0.0):
     train_val_df, dev_df = load_tsv()
     train_df, val_df = train_test_split(
         train_val_df, test_size=0.2, random_state=861, stratify=train_val_df["labels"]
@@ -90,13 +90,13 @@ def preprocess(aug_p=0.0):
     dev = tokenise_df(dev_df)
 
     # to avoid tokenising every time, save down the datasets
-    train.save_to_disk("data/train")
-    val.save_to_disk("data/val")
-    dev.save_to_disk("data/dev")
+    train.save_to_disk(f"{dir_path}/train")
+    val.save_to_disk(f"{dir_path}/val")
+    dev.save_to_disk(f"{dir_path}/dev")
 
 
 if __name__ == "__main__":
-    preprocess(0.0)
+    preprocess(dir_path='data', aug_p=0.0)
 
     # --------------------------------------------
     # For loading into the main file
