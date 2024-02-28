@@ -180,7 +180,7 @@ def preprocess(
 
 
 if __name__ == "__main__":
-    preprocess('data',0.0)
+    preprocess('data', 0.0)
 
     # --------------------------------------------
     # For loading into the main file
