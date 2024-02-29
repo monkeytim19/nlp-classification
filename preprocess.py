@@ -180,7 +180,12 @@ def preprocess(
 
 
 if __name__ == "__main__":
-    preprocess('data', 0.0)
+    preprocess(
+        dir_path="data",
+        upsample=0.0,
+        back_translate=False,
+        preprompt="patronising: ",
+    )
 
     # --------------------------------------------
     # For loading into the main file

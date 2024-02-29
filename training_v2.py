@@ -91,6 +91,9 @@ class CustomBert(nn.Module):
             param.requires_grad = False
 
     def unfreeze(self, layer=None):
+        if layer is not None and layer < 0:
+            return
+
         for name, param in self.distilbert.named_parameters():
             if layer is None or name.startswith(f"transformer.layer.{layer}"):
                 param.requires_grad = True
@@ -118,9 +121,19 @@ def compute_metrics(pred, class_weights=None):
     return results
 
 
-def main(label="", dropout=0.1, transformer_out=6, binary_flag=False, **kwargs):
+def main(
+    label="",
+    dropout=0.1,
+    transformer_out=6,
+    binary_flag=False,
+    unfreeze_layers=[-1, None],
+    unfreeze_epochs=[1, 9],
+    **kwargs,
+):
 
-    wandb.init(project="distilbert", name=f"{label}_d_{dropout}_lossweights_T")
+    run_name = f"{label}_d_{dropout}"
+    run_id = wandb.util.generate_id()
+    wandb.init(project="distilbert", name=run_name, id=run_id)
 
     torch.manual_seed(892)
     np.random.seed(892)
@@ -148,77 +161,68 @@ def main(label="", dropout=0.1, transformer_out=6, binary_flag=False, **kwargs):
     class_weights = torch.tensor(class_weights)
     compute_metrics_weighted = partial(compute_metrics, class_weights=class_weights)
 
-    model = CustomBert(dropout=dropout, class_weights=class_weights.to(device))
+    model = CustomBert(
+        dropout=dropout,
+        class_weights=class_weights.to(device),
+        transformer_out=transformer_out,
+    )
     model.to(device)
 
-    training_args = TrainingArguments(
-        output_dir="./results",
-        num_train_epochs=10,
-        per_device_train_batch_size=16,
-        per_device_eval_batch_size=16,
-        warmup_steps=500,
-        weight_decay=0.01,
-        evaluation_strategy="epoch",
-        # save_strategy="epoch",
-        # save_total_limit=2,
-        report_to="wandb",
-    )
+    model.freeze()
+    for i, (layer, num_epochs) in enumerate(zip(unfreeze_layers, unfreeze_epochs)):
+        if i != 0:
+            model.unfreeze(layer)
+            wandb.init(project="distilbert", id=run_id, resume="must")
 
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=train,
-        eval_dataset=val,
-        compute_metrics=compute_metrics_weighted,
-    )
+        training_args = TrainingArguments(
+            output_dir="./results",
+            num_train_epochs=num_epochs,
+            per_device_train_batch_size=16,
+            per_device_eval_batch_size=16,
+            warmup_steps=300,
+            # weight_decay=0.01,
+            evaluation_strategy="epoch",
+            # save_strategy="epoch",
+            # save_total_limit=2,
+            report_to="wandb",
+        )
 
-    trainer.train()
-    eval_result = trainer.evaluate()
-    print(eval_result)
+        trainer = Trainer(
+            model=model,
+            args=training_args,
+            train_dataset=train,
+            eval_dataset=val,
+            compute_metrics=compute_metrics_weighted,
+        )
 
+        trainer.train()
+        wandb.finish()
+
+    wandb.init(project="distilbert", name=run_name, id=run_id, resume="must")
     config = wandb.config
     config.dropout = dropout
     config.transformer_out = transformer_out
     config.binary_flag = binary_flag
     for k, v in kwargs.items():
         setattr(config, k, v)
-    for k, v in eval_result.items():
-        setattr(config, k, v)
+    # for k, v in eval_result.items():
+    #     setattr(config, k, v)
+    config.unfreeze_layers = unfreeze_layers
+    config.unfreeze_epochs = unfreeze_epochs
 
-    # torch.save(model.state_dict(), "results/model.pth")
+    torch.save(model.state_dict(), "results/model.pth")
     wandb.finish()
 
 
 if __name__ == "__main__":
-    from preprocess import preprocess
+    # from preprocess import preprocess
 
-    preprocess(upsample=0.0, back_translate=False)
-    main(label="no_aug_no_pre")
+    unfreeze_layers = [-1, 6, 5, 4, 3, 2, 1, None]
+    unfreeze_epochs = [2, 2, 2, 2, 2, 2, 2, 5]
 
-    # for back_translate in [False, True]:
-    #     for sub_p in [0.0, 0.2]:
-    #         for ins_p in [0.0, 0.05]:
-    #             try:
-    #                 preprocess(sub_p=sub_p, ins_p=ins_p, back_translate=back_translate)
-    #                 kwargs = {
-    #                     "sub_p": sub_p,
-    #                     "ins_p": ins_p,
-    #                     "back_translate": back_translate,
-    #                 }
-    #                 main(label=f"sub_{sub_p}_ins_{ins_p}_bt_{back_translate}", **kwargs)
-    #             except Exception as e:
-    #                 print(e)
-
-    # for aug_p in [0.4]:
-    #     preprocess(aug_p)
-    #     main(label=f"aug_{aug_p}", dropout=0.1)
-
-    # Copy this for testing model
-    # example = next(iter(train))
-    # x, attention, y = example["input_ids"], example["attention_mask"], example["labels"]
-    # x, attention, y = torch.tensor(x), torch.tensor(attention), torch.tensor(y)
-    # x, attention, y = x.unsqueeze(0), attention.unsqueeze(0), y.unsqueeze(0)
-    # pred = model(x, attention)
-    # print(pred)
-    # print(y)
-    # print(pred.shape)
+    main(
+        label="gradual_no_aug_wpre_lyr_4-6",
+        unfreeze_layers=unfreeze_layers,
+        unfreeze_epochs=unfreeze_epochs,
+        transformer_out=range(4, 7),
+    )
