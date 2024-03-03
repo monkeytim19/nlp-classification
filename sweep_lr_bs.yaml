@@ -1,0 +1,13 @@
+method: bayes
+metric:
+  name: eval/f1p
+  goal: maximize
+parameters:
+  learning_rate:
+    min: 0.00001
+    max: 0.0005
+  per_device_train_batch_size:
+    values: [8, 16]
+  dropout:
+    min: 0.1
+    max: 0.5

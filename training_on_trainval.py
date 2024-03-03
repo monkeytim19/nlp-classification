@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from datasets import Dataset
+from datasets import Dataset, concatenate_datasets
 from sklearn.metrics import f1_score, mean_squared_error
 from sklearn.utils.class_weight import compute_class_weight
 from torch.nn.functional import mse_loss
@@ -156,21 +156,24 @@ def main(
     val = Dataset.load_from_disk("data/val")
     dev = Dataset.load_from_disk("data/dev")
 
+    # concatenate datasets to get train_val
+    # had to convert one of the column types or it throws an issue
+    val_cast = val.cast(train.features)
+    train_val = concatenate_datasets([train, val_cast])
+
     # Preprocessing was adjusted to use the score as the labels
     # If we don't want to use the score then we have to go back to using the pcl as the labels
     global binary_classifier
     binary_classifier = binary_flag
     if binary_classifier:
-        train = train.map(lambda x: {"score": x["labels"]})
-        train = train.map(lambda x: {"labels": x["pcl"]})
+        train = train_val.map(lambda x: {"score": x["labels"]})
+        train = train_val.map(lambda x: {"labels": x["pcl"]})
 
-    labels = train["labels"]
+    labels = train_val["labels"]
     class_weights = compute_class_weight(
         "balanced", classes=np.unique(labels), y=labels
     )
     class_weights = torch.tensor(class_weights)
-    # print(class_weights)
-    # class_weights = class_weights / class_weights  # temp
     compute_metrics_weighted = partial(compute_metrics, class_weights=class_weights)
 
     model = CustomBert(
@@ -194,21 +197,18 @@ def main(
             learning_rate=learning_rate,
             warmup_steps=419,
             evaluation_strategy="epoch",
-            # save_strategy="epoch",
-            # save_total_limit=2,
             report_to="wandb",
         )
 
         trainer = Trainer(
             model=model,
             args=training_args,
-            train_dataset=train,
-            eval_dataset=val,
+            train_dataset=train_val,
+            eval_dataset=dev,
             compute_metrics=compute_metrics_weighted,
         )
 
         trainer.train()
-
         wandb.finish()
 
     wandb.init(project="distilbert", name=run_name, id=run_id, resume="must")
@@ -232,96 +232,13 @@ def main(
 if __name__ == "__main__":
 
     unfreeze_layers = [-1, 5, 4, 3, 2, 1, 0]
-    unfreeze_epochs = [3, 3, 3, 3, 3, 3, 2]
+    unfreeze_epochs = [3, 3, 3, 3, 3, 3, 3]
 
     main(
-        label="hypertuned_1",
+        label="ht_t&v",
         unfreeze_layers=unfreeze_layers,
         unfreeze_epochs=unfreeze_epochs,
         dropout=0.10877582740940311,
         per_device_train_batch_size=8,
         learning_rate=0.00001834940916078444,
     )
-
-    # wandb.agent("5nhxjmrl", main, count=24, project="distilbert")
-
-    # unfreeze_layers = [-1, 5]
-    # unfreeze_epochs = [2, 2]
-
-    # main(
-    #     label="sweep_test",
-    #     unfreeze_layers=unfreeze_layers,
-    #     unfreeze_epochs=unfreeze_epochs,
-    #     transformer_out=range(4, 7),
-    # )
-
-    # unfreeze_layers = [-1, 5, 4, 3, 2, 1, 0, None]
-    # unfreeze_epochs = [3, 3, 3, 3, 3, 3, 3, 10]
-
-    # main(
-    #     label="sch_3_lr_5e-6",
-    #     unfreeze_layers=unfreeze_layers,
-    #     unfreeze_epochs=unfreeze_epochs,
-    #     transformer_out=range(4, 7),
-    # )
-
-    # unfreeze_layers = [-1, 6, 5, 4, 3, 2, 1, None]
-    # unfreeze_epochs = [2, 2, 2, 2, 2, 2, 2, 15]
-
-    # main(
-    #     label="wpre_lyr_4-6",
-    #     unfreeze_layers=unfreeze_layers,
-    #     unfreeze_epochs=unfreeze_epochs,
-    #     transformer_out=range(4, 7),
-    # )
-
-    # unfreeze_layers = [-1, 6, 5, 4, 3, 2, 1, None]
-    # unfreeze_epochs = [2, 2, 2, 2, 2, 2, 10, 10]
-
-    # main(
-    #     label="wpre_lyr_4-6_tail1010",
-    #     unfreeze_layers=unfreeze_layers,
-    #     unfreeze_epochs=unfreeze_epochs,
-    #     transformer_out=range(4, 7),
-    # )
-
-    # try:
-    #     main(
-    #         label="wpre_lyr_4-6_w1",
-    #         unfreeze_layers=unfreeze_layers,
-    #         unfreeze_epochs=unfreeze_epochs,
-    #         transformer_out=range(4, 7),
-    #     )
-    # except Exception as e:
-    #     print(e)
-
-    # try:
-    #     main(
-    #         label="wpre_lyr_6_w1",
-    #         unfreeze_layers=unfreeze_layers,
-    #         unfreeze_epochs=unfreeze_epochs,
-    #         transformer_out=6,
-    #     )
-    # except Exception as e:
-    #     print(e)
-
-    # try:
-    #     main(
-    #         label="wpre_lyr_1-6_w1",
-    #         unfreeze_layers=unfreeze_layers,
-    #         unfreeze_epochs=unfreeze_epochs,
-    #         transformer_out=range(1, 7),
-    #     )
-    # except Exception as e:
-    #     print(e)
-
-    # try:
-    #     main(
-    #         label="wpre_lyr_4-6_w1",
-    #         unfreeze_layers=unfreeze_layers,
-    #         unfreeze_epochs=unfreeze_epochs,
-    #         transformer_out=range(4, 7),
-    #         dropout=0.3,
-    #     )
-    # except Exception as e:
-    #     print(e)
