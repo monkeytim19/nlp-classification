@@ -28,7 +28,7 @@ def load_tsv():
     PCL_threshold = 2
     paragraphs["pcl"] = (paragraphs["labels"] >= PCL_threshold).astype(int)
     paragraphs["labels"] = paragraphs["labels"].astype(float)
-    paragraphs = paragraphs.dropna()  # paragraph 8640 has None text
+    paragraphs["text"] = paragraphs["text"].fillna("")
 
     # Split into train+val and dev
     train_split_path = "data/train_semeval_parids-labels.csv"
@@ -43,6 +43,21 @@ def load_tsv():
     # Note at this point we have 3 label columns - need to be careful about which ones get into training
     # labels (the score), label_category_vector, pcl (the true classification label)
     return train_val, dev
+
+
+def load_test_tsv():
+    # Import main data file
+    paragraphs_path = "data/task4_test.tsv"
+    paragraphs = pd.read_csv(paragraphs_path, sep="\t", skiprows=0, header=None)
+    paragraphs.columns = [
+        "par_id",
+        "art_id",
+        "keyword",
+        "country_code",
+        "text",
+    ]
+
+    return paragraphs
 
 
 def tokenise_df(df):
@@ -179,13 +194,29 @@ def preprocess(
     dev.save_to_disk(f"{dir_path}/dev")
 
 
+def preprocess_test():
+    test_df = load_test_tsv()
+    test_df["text"] = "patronizing: " + test_df["text"]
+    test = tokenise_df(test_df)
+    test.save_to_disk("data/test")
+
+
 if __name__ == "__main__":
+    preprocess_test()
+
     preprocess(
         dir_path="data",
         upsample=0.0,
         back_translate=False,
-        preprompt="patronising: ",
+        preprompt="patronizing: ",
     )
+
+    # preprocess(
+    #     dir_path="data",
+    #     upsample=2.0,
+    #     back_translate=True,
+    #     preprompt="",
+    # )
 
     # --------------------------------------------
     # For loading into the main file
