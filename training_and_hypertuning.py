@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from datasets import Dataset, concatenate_datasets
+from datasets import Dataset
 from sklearn.metrics import f1_score, mean_squared_error
 from sklearn.utils.class_weight import compute_class_weight
 from torch.nn.functional import mse_loss
@@ -130,6 +130,7 @@ def main(
     unfreeze_epochs=[3, 3, 3, 3, 3, 3, 3],
     learning_rate=5e-5,
     per_device_train_batch_size=16,
+    use_weights=True,
     **kwargs,
 ):
 
@@ -145,35 +146,35 @@ def main(
     except:
         pass
 
-    torch.manual_seed(892)
-    np.random.seed(892)
-    random.seed(892)
+    torch.manual_seed(893)
+    np.random.seed(893)
+    random.seed(893)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(892)
+        torch.cuda.manual_seed_all(893)
 
     train = Dataset.load_from_disk("data/train")
     val = Dataset.load_from_disk("data/val")
     dev = Dataset.load_from_disk("data/dev")
-
-    # concatenate datasets to get train_val
-    # had to convert one of the column types or it throws an issue
-    val_cast = val.cast(train.features)
-    train_val = concatenate_datasets([train, val_cast])
 
     # Preprocessing was adjusted to use the score as the labels
     # If we don't want to use the score then we have to go back to using the pcl as the labels
     global binary_classifier
     binary_classifier = binary_flag
     if binary_classifier:
-        train = train_val.map(lambda x: {"score": x["labels"]})
-        train = train_val.map(lambda x: {"labels": x["pcl"]})
+        train = train.map(lambda x: {"score": x["labels"]})
+        train = train.map(lambda x: {"labels": x["pcl"]})
+        val = val.map(lambda x: {"score": x["labels"]})
+        val = val.map(lambda x: {"labels": x["pcl"]})
 
-    labels = train_val["labels"]
+    labels = train["labels"]
     class_weights = compute_class_weight(
         "balanced", classes=np.unique(labels), y=labels
     )
     class_weights = torch.tensor(class_weights)
+    # print(class_weights)
+    if not use_weights:
+        class_weights = class_weights / class_weights
     compute_metrics_weighted = partial(compute_metrics, class_weights=class_weights)
 
     model = CustomBert(
@@ -197,18 +198,21 @@ def main(
             learning_rate=learning_rate,
             warmup_steps=419,
             evaluation_strategy="epoch",
+            # save_strategy="epoch",
+            # save_total_limit=2,
             report_to="wandb",
         )
 
         trainer = Trainer(
             model=model,
             args=training_args,
-            train_dataset=train_val,
-            eval_dataset=dev,
+            train_dataset=train,
+            eval_dataset=val,
             compute_metrics=compute_metrics_weighted,
         )
 
         trainer.train()
+
         wandb.finish()
 
     wandb.init(project="distilbert", name=run_name, id=run_id, resume="must")
@@ -230,15 +234,11 @@ def main(
 
 
 if __name__ == "__main__":
-
-    unfreeze_layers = [-1, 5, 4, 3, 2, 1, 0]
-    unfreeze_epochs = [3, 3, 3, 3, 3, 3, 3]
-
     main(
-        label="ht_t&v",
-        unfreeze_layers=unfreeze_layers,
-        unfreeze_epochs=unfreeze_epochs,
+        label="final_base_all_z",
         dropout=0.10877582740940311,
         per_device_train_batch_size=8,
         learning_rate=0.00001834940916078444,
     )
+
+    # wandb.agent("5nhxjmrl", main, count=24, project="distilbert")

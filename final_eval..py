@@ -3,7 +3,7 @@ from datasets import Dataset
 from sklearn.metrics import f1_score, mean_squared_error
 from torch.utils.data import DataLoader
 
-from training_v2 import CustomBert
+from training_final_trainval import CustomBert
 
 
 def compute_metrics(labels, y_preds):

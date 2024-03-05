@@ -204,12 +204,12 @@ def preprocess_test():
 if __name__ == "__main__":
     preprocess_test()
 
-    preprocess(
-        dir_path="data",
-        upsample=0.0,
-        back_translate=False,
-        preprompt="patronizing: ",
-    )
+    # preprocess(
+    #     dir_path="data",
+    #     upsample=0.0,
+    #     back_translate=False,
+    #     preprompt="patronizing: ",
+    # )
 
     # preprocess(
     #     dir_path="data",
