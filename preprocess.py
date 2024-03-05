@@ -138,9 +138,9 @@ def preprocess(
     dir_path,
     sub_p=0.2,
     ins_p=0.05,
-    upsample=2.0,
+    upsample=0.0,
     use_stopwords=True,
-    back_translate=True,
+    back_translate=False,
     preprompt="patronizing: ",
     postprompt="",
 ):
@@ -202,24 +202,6 @@ def preprocess_test():
 
 
 if __name__ == "__main__":
+    preprocess(dir_path="data")
+
     preprocess_test()
-
-    # preprocess(
-    #     dir_path="data",
-    #     upsample=0.0,
-    #     back_translate=False,
-    #     preprompt="patronizing: ",
-    # )
-
-    # preprocess(
-    #     dir_path="data",
-    #     upsample=2.0,
-    #     back_translate=True,
-    #     preprompt="",
-    # )
-
-    # --------------------------------------------
-    # For loading into the main file
-    # train = Dataset.load_from_disk("data/train")
-    # val = Dataset.load_from_disk("data/val")
-    # dev = Dataset.load_from_disk("data/dev")
